@@ -1,0 +1,40 @@
+using WikiTest.Domain;
+
+namespace WikiTest.Application
+{
+    public class WikiPageService
+    {
+        private readonly IWikiPageService _wikiPageService;
+        private readonly ITextNormalizer _textNormalizer;
+
+        public WikiPageService(IWikiPageService wikiPageService, ITextNormalizer textNormalizer)
+        {
+            _wikiPageService = wikiPageService;
+            _textNormalizer = textNormalizer;
+        }
+
+        public async Task<bool> CompareDebuggingWordsAsync()
+        {
+            var uiText = await _wikiPageService.GetDebuggingSectionTextAsync();
+            var normUiText = _textNormalizer.Normalize(uiText);
+            var uiWordCount = _textNormalizer.CountUniqueWords(normUiText);
+
+            var section = await _wikiPageService.GetSectionByTitleAsync("Debugging features");
+            var normApiText = _textNormalizer.Normalize(section.Content);
+            var apiWordCount = _textNormalizer.CountUniqueWords(normApiText);
+
+            return uiWordCount == apiWordCount;
+        }
+
+        public async Task<bool> ValidateTechLinksAsync()
+        {
+            return await _wikiPageService.AreTechLinksValidAsync();
+        }
+
+        public async Task<bool> SwitchAndVerifyDarkModeAsync()
+        {
+            await _wikiPageService.SwitchToDarkModeAsync();
+            return await _wikiPageService.IsDarkModeActiveAsync();
+        }
+    }
+}
