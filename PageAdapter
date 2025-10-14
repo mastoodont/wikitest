@@ -1,105 +1,69 @@
-using Microsoft.Playwright;
-using System.Net.Http;
-using System.Text.Json;
+using NUnit.Framework;
+using WikiTest.Application;
+using WikiTest.Infrastructure;
 using WikiTest.Domain;
+using ExtentReports;
+using ExtentReports.Reporter;
+using System.Threading.Tasks;
 
-namespace WikiTest.Infrastructure
+namespace WikiTest.Tests
 {
-    public class WikiPageAdapter : IWikiPageService
+    [TestFixture]
+    public class WikiPageServiceTests
     {
-        private readonly IPage _page;
-        private readonly HttpClient _httpClient;
-        private const string Url = "https://en.wikipedia.org/wiki/Playwright_(software)";
+        private WikiPageService _service;
+        private static ExtentReports _extent;
+        private ExtentTest _test;
 
-        public WikiPageAdapter(IPage page, HttpClient httpClient)
+        [OneTimeSetUp]
+        public static void SetupReport()
         {
-            _page = page;
-            _httpClient = httpClient;
+            var htmlReporter = new ExtentHtmlReporter("TestReport.html");
+            _extent = new ExtentReports();
+            _extent.AttachReporter(htmlReporter);
         }
 
-        public async Task<string> GetDebuggingSectionTextAsync()
+        [SetUp]
+        public void Setup()
         {
-            await _page.GotoAsync(Url);
-            var locator = _page.Locator("//h2[contains(.,'Debugging features')]//following-sibling::p | //h2[contains(.,'Debugging features')]//following-sibling::ul");
-            var texts = await locator.AllInnerTextsAsync();
-            return string.Join(" ", texts);
+            var wikiPageService = new WikiPageServiceImpl();
+            var textNormalizer = new TextNormalizer();
+            _service = new WikiPageService(wikiPageService, textNormalizer);
+            _test = _extent.CreateTest(TestContext.CurrentContext.Test.Name);
         }
 
-        public async Task<bool> AreTechLinksValidAsync()
+        [Test]
+        public async Task CompareDebuggingWordsAsync_ReturnsTrue_WhenWordsMatch()
         {
-            await _page.GotoAsync(Url);
-            var techSection = _page.Locator("#Microsoft_development_tools");
-            var links = await techSection.Locator("a").AllAsync();
-            foreach (var link in links)
+            var result = await _service.CompareDebuggingWordsAsync();
+            Assert.IsTrue(result, "The count of unique words in UI and API texts should match.");
+            _test.Pass("Debugging words comparison test passed.");
+        }
+
+        [Test]
+        public async Task ValidateTechLinksAsync_ReturnsTrue_WhenAllLinksValid()
+        {
+            var result = await _service.ValidateTechLinksAsync();
+            Assert.IsTrue(result, "All technology names should be valid links.");
+            _test.Pass("Technology links validation test passed.");
+        }
+
+        [Test]
+        public async Task SwitchAndVerifyDarkModeAsync_ReturnsTrue_WhenDarkModeActive()
+        {
+            var result = await _service.SwitchAndVerifyDarkModeAsync();
+            Assert.IsTrue(result, "Dark mode should be active after switching.");
+            _test.Pass("Dark mode switch and verification test passed.");
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (TestContext.CurrentContext.Result.Outcome.Status == NUnit.Framework.Interfaces.TestStatus.Failed)
             {
-                if (string.IsNullOrEmpty(await link.GetAttributeAsync("href")))
-                    return false;
+                _test.Fail(TestContext.CurrentContext.Result.Message);
             }
-            return true;
-        }
-
-        public async Task SwitchToDarkModeAsync()
-        {
-            await _page.GotoAsync(Url);
-            var appearance = _page.Locator("//div[contains(@class,'vector-appearance-dropdown')]");
-            var darkMode = _page.Locator("[data-mw-skin='vector-night-mode']");
-            await appearance.ClickAsync();
-            await darkMode.ClickAsync();
-        }
-
-        public async Task<bool> IsDarkModeActiveAsync()
-        {
-            var bodyClass = await _page.EvalOnSelectorAsync<string>("body", "el => el.className");
-            return bodyClass.Contains("skin-theme-clientpref-night");
-        }
-
-        public async Task<WikiSection> GetSectionByTitleAsync(string title)
-        {
-            var sectionUrl = "https://en.wikipedia.org/w/api.php?action=parse&page=Playwright_(software)&prop=sections&format=json";
-            var sectionJson = await _httpClient.GetStringAsync(sectionUrl);
-            var sectionData = JsonSerializer.Deserialize<WikiSectionsResponse>(sectionJson);
-            var section = sectionData.Parse.Sections.FirstOrDefault(s => s.Line == title);
-
-            if (section == null)
-                throw new Exception($"Section '{title}' not found");
-
-            var apiUrl = $"https://en.wikipedia.org/w/api.php?action=parse&page=Playwright_(software)&section={section.Index}&prop=text&format=json";
-            var apiJson = await _httpClient.GetStringAsync(apiUrl);
-            var apiData = JsonSerializer.Deserialize<WikiParseResponse>(apiJson);
-
-            return new WikiSection
-            {
-                Index = section.Index,
-                Title = section.Line,
-                Content = apiData.Parse.Text["*"]
-            };
-        }
-
-        private class WikiParseResponse
-        {
-            public Parse Parse { get; set; }
-        }
-
-        private class Parse
-        {
-            public string Title { get; set; }
-            public Dictionary<string, string> Text { get; set; }
-        }
-
-        private class WikiSectionsResponse
-        {
-            public ParseSections Parse { get; set; }
-        }
-
-        private class ParseSections
-        {
-            public List<Section> Sections { get; set; }
-        }
-
-        private class Section
-        {
-            public int Index { get; set; }
-            public string Line { get; set; }
+            _extent.Flush();
         }
     }
 }
