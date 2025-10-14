@@ -1,40 +1,35 @@
 using WikiTest.Domain;
+using System;
+using System.Linq;
 
 namespace WikiTest.Application
 {
-    public class WikiPageService
+    public class TextNormalizer : ITextNormalizer
     {
-        private readonly IWikiPageService _wikiPageService;
-        private readonly ITextNormalizer _textNormalizer;
-
-        public WikiPageService(IWikiPageService wikiPageService, ITextNormalizer textNormalizer)
+        public string Normalize(string text)
         {
-            _wikiPageService = wikiPageService;
-            _textNormalizer = textNormalizer;
+            if (string.IsNullOrEmpty(text))
+                return string.Empty;
+
+            // Приводим к нижнему регистру, удаляем знаки препинания
+            return text.ToLower()
+                .Replace(".", "")
+                .Replace(",", "")
+                .Replace(";", "")
+                .Replace(":", "")
+                .Replace("!", "")
+                .Replace("?", "")
+                .Trim();
         }
 
-        public async Task<bool> CompareDebuggingWordsAsync()
+        public int CountUniqueWords(string text)
         {
-            var uiText = await _wikiPageService.GetDebuggingSectionTextAsync();
-            var normUiText = _textNormalizer.Normalize(uiText);
-            var uiWordCount = _textNormalizer.CountUniqueWords(normUiText);
+            if (string.IsNullOrEmpty(text))
+                return 0;
 
-            var section = await _wikiPageService.GetSectionByTitleAsync("Debugging features");
-            var normApiText = _textNormalizer.Normalize(section.Content);
-            var apiWordCount = _textNormalizer.CountUniqueWords(normApiText);
-
-            return uiWordCount == apiWordCount;
-        }
-
-        public async Task<bool> ValidateTechLinksAsync()
-        {
-            return await _wikiPageService.AreTechLinksValidAsync();
-        }
-
-        public async Task<bool> SwitchAndVerifyDarkModeAsync()
-        {
-            await _wikiPageService.SwitchToDarkModeAsync();
-            return await _wikiPageService.IsDarkModeActiveAsync();
+            // Разбиваем текст на слова и считаем уникальные
+            var words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            return words.Distinct().Count();
         }
     }
 }
