@@ -6,13 +6,14 @@ using System.Threading.Tasks;
 
 namespace WikiTest.Infrastructure
 {
-    public class WikiPageServiceImpl : IWikiPageService
+    public class WikiPageService : IWikiPageService, IDisposable
     {
         private readonly IPlaywright _playwright;
         private readonly IBrowser _browser;
         private readonly HttpClient _httpClient;
+        private bool _disposed;
 
-        public WikiPageServiceImpl()
+        public WikiPageService()
         {
             _playwright = Playwright.CreateAsync().GetAwaiter().GetResult();
             _browser = _playwright.Chromium.LaunchAsync(new() { Headless = true }).GetAwaiter().GetResult();
@@ -22,15 +23,22 @@ namespace WikiTest.Infrastructure
         public async Task<string> GetDebuggingSectionTextAsync()
         {
             var page = await _browser.NewPageAsync();
-            await page.GotoAsync("https://en.wikipedia.org/wiki/Playwright_(software)");
-            var debuggingSection = await page.Locator("h2:has-text('Debugging features') ~ p").First.TextContentAsync();
-            await page.CloseAsync();
-            return debuggingSection ?? string.Empty;
+            try
+            {
+                var wikiPage = new PlaywrightWikiPage(page);
+                await wikiPage.GoToPageAsync();
+                return await wikiPage.GetDebuggingSectionTextAsync();
+            }
+            finally
+            {
+                await page.CloseAsync();
+            }
         }
 
         public async Task<WikiSection> GetSectionByTitleAsync(string title)
         {
             var response = await _httpClient.GetAsync($"https://en.wikipedia.org/w/api.php?action=parse&page=Playwright_(software)&prop=wikitext&sectiontitle={title}&format=json");
+            response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync();
             using var jsonDoc = JsonDocument.Parse(content);
             var wikitext = jsonDoc.RootElement.GetProperty("parse").GetProperty("wikitext").GetProperty("*").GetString();
@@ -40,35 +48,57 @@ namespace WikiTest.Infrastructure
         public async Task<bool> AreTechLinksValidAsync()
         {
             var page = await _browser.NewPageAsync();
-            await page.GotoAsync("https://en.wikipedia.org/wiki/Playwright_(software)");
-            var techLinks = await page.Locator("h3:has-text('Microsoft development tools') ~ ul li a").AllAsync();
-
-            foreach (var link in techLinks)
+            try
             {
-                var href = await link.GetAttributeAsync("href");
-                if (string.IsNullOrEmpty(href) || href == "#")
-                    return false;
+                var wikiPage = new PlaywrightWikiPage(page);
+                await wikiPage.GoToPageAsync();
+                return await wikiPage.AreTechLinksValidAsync();
             }
-
-            await page.CloseAsync();
-            return true;
+            finally
+            {
+                await page.CloseAsync();
+            }
         }
 
         public async Task SwitchToDarkModeAsync()
         {
             var page = await _browser.NewPageAsync();
-            await page.GotoAsync("https://en.wikipedia.org/wiki/Playwright_(software)");
-            await page.Locator("a[title='Switch to dark mode']").ClickAsync();
-            await page.CloseAsync();
+            try
+            {
+                var wikiPage = new PlaywrightWikiPage(page);
+                await wikiPage.GoToPageAsync();
+                await wikiPage.SwitchToDarkModeAsync();
+            }
+            finally
+            {
+                await page.CloseAsync();
+            }
         }
 
         public async Task<bool> IsDarkModeActiveAsync()
         {
             var page = await _browser.NewPageAsync();
-            await page.GotoAsync("https://en.wikipedia.org/wiki/Playwright_(software)");
-            var isDarkMode = await page.Locator("html.mw-dark-mode").IsVisibleAsync();
-            await page.CloseAsync();
-            return isDarkMode;
+            try
+            {
+                var wikiPage = new PlaywrightWikiPage(page);
+                await wikiPage.GoToPageAsync();
+                return await wikiPage.IsDarkModeActiveAsync();
+            }
+            finally
+            {
+                await page.CloseAsync();
+            }
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _httpClient.Dispose();
+                _browser.CloseAsync().GetAwaiter().GetResult();
+                _playwright.Dispose();
+                _disposed = true;
+            }
         }
     }
 }
