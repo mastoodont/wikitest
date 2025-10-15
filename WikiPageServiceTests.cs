@@ -26,7 +26,7 @@ namespace WikiTest.Tests
         [SetUp]
         public void Setup()
         {
-            var wikiPageService = new WikiPageServiceImpl();
+            var wikiPageService = new WikiPageService();
             var textNormalizer = new TextNormalizer();
             _service = new WikiPageService(wikiPageService, textNormalizer);
             _test = _extent.CreateTest(TestContext.CurrentContext.Test.Name);
@@ -63,6 +63,12 @@ namespace WikiTest.Tests
             {
                 _test.Fail(TestContext.CurrentContext.Result.Message);
             }
+            _extent.Flush();
+        }
+
+        [OneTimeTearDown]
+        public void OneTimeTearDown()
+        {
             _extent.Flush();
         }
     }
