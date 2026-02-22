@@ -210,8 +210,8 @@ class EchidnaChecker(ToolChecker):
             
             # Find Linux build
             asset = next(
-                (a for a in assets if 'linux' in a['name'].lower() and
-                 (a['name'].endswith('.tar.gz') or a['name'].endswith('.zip'))),
+                (a for a in assets if any(x in a['name'].lower() for x in ['linux', 'x86_64', 'amd64']) and
+                 a['name'].endswith(('.tar.gz', '.zip', '.AppImage'))),
                 None
             )
             
@@ -239,6 +239,12 @@ class EchidnaChecker(ToolChecker):
                 elif filename.endswith('.zip'):
                     with zipfile.ZipFile(tmp_file, 'r') as z:
                         z.extractall(tmp)
+                elif filename.endswith('.AppImage'):
+                    dst = os.path.join(install_dir, 'echidna')
+                    shutil.copy2(tmp_file, dst)
+                    os.chmod(dst, 0o755)
+                    logger.info(f"Echidna AppImage installed to {dst}")
+                    return True
                 
                 # Find echidna binary
                 for root_dir, dirs, files in os.walk(tmp):
@@ -852,4 +858,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-// MONITORING VERSIONS  בסייד
+// MONITORING INSTRUMENTS  בסייד
