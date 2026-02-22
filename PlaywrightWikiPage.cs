@@ -20,12 +20,25 @@ import threading
 from dataclasses import dataclass
 from packaging import version
 
+# ==================== Linux PATH Fix ====================
+# Ensure Go bin and ~/.local/bin are in PATH
+_extra_paths = [
+    os.path.expanduser('~/go/bin'),
+    os.path.expanduser('~/.local/bin'),
+    '/usr/local/go/bin',
+]
+_current_path = os.environ.get('PATH', '')
+for _p in _extra_paths:
+    if _p not in _current_path:
+        os.environ['PATH'] = _p + ':' + os.environ.get('PATH', '')
+
+
 
 # ==================== Configuration ====================
 
 CONFIG = {
-    'tools_dir': r'C:\Tools\Fuzzers',
-    'go_bin': os.path.expandvars(r'%USERPROFILE%\go\bin'),
+    'tools_dir': os.path.expanduser('~/tools/fuzzers'),
+    'go_bin': os.path.expanduser('~/go/bin'),
     'use_go_bin_for_medusa': True,
 }
 
@@ -145,7 +158,7 @@ class SlitherChecker(ToolChecker):
     def update() -> bool:
         try:
             result = subprocess.run(
-                ["python", "-m", "pip", "install", "--upgrade", "slither-analyzer"],
+                ["python3", "-m", "pip", "install", "--upgrade", "slither-analyzer", "--break-system-packages"],
                 capture_output=True,
                 text=True,
                 timeout=60
@@ -195,19 +208,51 @@ class EchidnaChecker(ToolChecker):
             )
             assets = response.json()['assets']
             
-            # Find Windows build
+            # Find Linux build
             asset = next(
-                (a for a in assets if 'win64.zip' in a['name'] or 'windows' in a['name'].lower()),
+                (a for a in assets if 'linux' in a['name'].lower() and
+                 (a['name'].endswith('.tar.gz') or a['name'].endswith('.zip'))),
                 None
             )
             
             if not asset:
-                logger.error("Windows build not found for Echidna")
+                logger.error("Linux build not found for Echidna")
                 return False
             
-            logger.info(f"Downloading Echidna from {asset['browser_download_url']}")
-            # Download and extract would go here
-            return True
+            download_url = asset['browser_download_url']
+            filename = asset['name']
+            install_dir = os.path.expanduser('~/.local/bin')
+            os.makedirs(install_dir, exist_ok=True)
+            
+            logger.info(f"Downloading Echidna from {download_url}")
+            
+            import tempfile, tarfile, zipfile, shutil
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_file = os.path.join(tmp, filename)
+                dl = requests.get(download_url, timeout=120)
+                with open(tmp_file, 'wb') as f:
+                    f.write(dl.content)
+                
+                if filename.endswith('.tar.gz'):
+                    with tarfile.open(tmp_file, 'r:gz') as tar:
+                        tar.extractall(tmp)
+                elif filename.endswith('.zip'):
+                    with zipfile.ZipFile(tmp_file, 'r') as z:
+                        z.extractall(tmp)
+                
+                # Find echidna binary
+                for root_dir, dirs, files in os.walk(tmp):
+                    for f in files:
+                        if f == 'echidna' or f == 'echidna-test':
+                            src = os.path.join(root_dir, f)
+                            dst = os.path.join(install_dir, 'echidna')
+                            shutil.copy2(src, dst)
+                            os.chmod(dst, 0o755)
+                            logger.info(f"Echidna installed to {dst}")
+                            return True
+            
+            logger.error("echidna binary not found in archive")
+            return False
         except Exception as e:
             logger.error(f"Echidna update failed: {e}")
             return False
@@ -285,7 +330,7 @@ class HalmosChecker(ToolChecker):
     def update() -> bool:
         try:
             result = subprocess.run(
-                ["python", "-m", "pip", "install", "--upgrade", "halmos"],
+                ["python3", "-m", "pip", "install", "--upgrade", "halmos", "--break-system-packages"],
                 capture_output=True,
                 text=True,
                 timeout=60
@@ -353,11 +398,11 @@ class Upgrade2026App:
         """Configure ttk styles for modern appearance."""
         style.configure('TFrame', background=self.COLORS['bg_primary'])
         style.configure('TLabel', background=self.COLORS['bg_primary'], foreground=self.COLORS['text_primary'])
-        style.configure('Title.TLabel', font=('Segoe UI', 16, 'bold'), background=self.COLORS['bg_primary'], foreground=self.COLORS['accent_primary'])
-        style.configure('Header.TLabel', font=('Segoe UI', 11, 'bold'), background=self.COLORS['bg_secondary'], foreground=self.COLORS['text_primary'])
+        style.configure('Title.TLabel', font=('Ubuntu', 16, 'bold'), background=self.COLORS['bg_primary'], foreground=self.COLORS['accent_primary'])
+        style.configure('Header.TLabel', font=('Ubuntu', 11, 'bold'), background=self.COLORS['bg_secondary'], foreground=self.COLORS['text_primary'])
         
         # Button styles
-        style.configure('Primary.TButton', font=('Segoe UI', 10))
+        style.configure('Primary.TButton', font=('Ubuntu', 10))
         style.map('Primary.TButton',
                  foreground=[('pressed', self.COLORS['bg_primary'])],
                  background=[('pressed', self.COLORS['accent_primary'])])
@@ -413,7 +458,7 @@ class Upgrade2026App:
         title = tk.Label(
             header_inner,
             text="🔐 Security Tools Manager",
-            font=('Segoe UI', 18, 'bold'),
+            font=('Ubuntu', 18, 'bold'),
             bg=self.COLORS['bg_secondary'],
             fg=self.COLORS['accent_primary']
         )
@@ -423,7 +468,7 @@ class Upgrade2026App:
         subtitle = tk.Label(
             header_inner,
             text="Smart version checker for Slither, Echidna, Medusa & Halmos",
-            font=('Segoe UI', 9),
+            font=('Ubuntu', 9),
             bg=self.COLORS['bg_secondary'],
             fg=self.COLORS['text_secondary']
         )
@@ -443,7 +488,7 @@ class Upgrade2026App:
         time_label = tk.Label(
             status_frame,
             text="",
-            font=('Segoe UI', 9),
+            font=('Ubuntu', 9),
             bg=self.COLORS['bg_primary'],
             fg=self.COLORS['text_secondary']
         )
@@ -467,7 +512,7 @@ class Upgrade2026App:
                 header,
                 text=header_text,
                 width=width // 8,
-                font=('Segoe UI', 10, 'bold'),
+                font=('Ubuntu', 10, 'bold'),
                 bg=self.COLORS['bg_tertiary'],
                 fg=self.COLORS['accent_primary'],
                 padx=10,
@@ -493,7 +538,7 @@ class Upgrade2026App:
             row_frame,
             text=tool_name,
             width=12,
-            font=('Segoe UI', 10),
+            font=('Ubuntu', 10),
             bg=self.COLORS['bg_secondary'],
             fg=self.COLORS['accent_primary'],
             padx=10,
@@ -535,7 +580,7 @@ class Upgrade2026App:
             row_frame,
             text="—",
             width=15,
-            font=('Segoe UI', 9),
+            font=('Ubuntu', 9),
             bg=self.COLORS['bg_secondary'],
             fg=self.COLORS['text_secondary'],
             padx=10,
@@ -549,7 +594,7 @@ class Upgrade2026App:
             row_frame,
             text="Checking...",
             width=21,
-            font=('Segoe UI', 9),
+            font=('Ubuntu', 9),
             bg=self.COLORS['bg_secondary'],
             fg=self.COLORS['text_secondary'],
             padx=10,
@@ -588,7 +633,7 @@ class Upgrade2026App:
         log_label = tk.Label(
             parent,
             text="Operation Log",
-            font=('Segoe UI', 10, 'bold'),
+            font=('Ubuntu', 10, 'bold'),
             bg=self.COLORS['bg_primary'],
             fg=self.COLORS['text_primary'],
             padx=0,
@@ -635,7 +680,7 @@ class Upgrade2026App:
                 button_frame,
                 text=text,
                 command=command,
-                font=('Segoe UI', 10, 'bold'),
+                font=('Ubuntu', 10, 'bold'),
                 bg=color,
                 fg=self.COLORS['bg_primary'] if color != self.COLORS['text_secondary'] else self.COLORS['text_primary'],
                 relief=tk.FLAT,
@@ -655,7 +700,7 @@ class Upgrade2026App:
         self.status_indicator = tk.Label(
             self.status_frame,
             text="✓ Ready",
-            font=('Segoe UI', 9),
+            font=('Ubuntu', 9),
             bg=self.COLORS['bg_primary'],
             fg=self.COLORS['accent_success'],
             padx=0,
@@ -807,3 +852,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+// MONITORING VERSIONS  בסייד
